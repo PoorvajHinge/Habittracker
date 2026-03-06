@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Monthly Habit Tracker</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0f0d0a; color: #e8d5b0; font-family: Georgia, serif; padding: 20px; min-height: 100vh; }
+  h1 { text-align: center; color: #f5c842; font-size: 28px; letter-spacing: 2px; margin-bottom: 4px; }
+  .subtitle { text-align: center; color: #6b5a35; font-size: 11px; letter-spacing: 3px; text-transform: uppercase; margin-bottom: 20px; }
+  .nav { display: flex; align-items: center; justify-content: center; gap: 20px; margin-bottom: 24px; }
+  .nav button { background: none; border: none; color: #8b6914; font-size: 22px; cursor: pointer; }
+  .nav span { color: #f5c842; font-size: 26px; font-weight: bold; letter-spacing: 2px; min-width: 220px; text-align: center; }
+  .table-wrap { overflow-x: auto; border-radius: 12px; border: 1px solid #2a2015; margin-bottom: 20px; }
+  table { border-collapse: collapse; width: 100%; }
+  th { background: #1c160e; color: #8b6914; font-size: 10px; letter-spacing: 2px; text-transform: uppercase; padding: 10px 4px; border-bottom: 1px solid #2a2015; border-right: 1px solid #201a0f; text-align: center; min-width: 28px; }
+  th.habit-col { text-align: left; padding: 10px 14px; min-width: 180px; position: sticky; left: 0; z-index: 2; }
+  th.pct-col { min-width: 48px; }
+  td { padding: 6px 2px; text-align: center; border-right: 1px solid #1e180e; border-bottom: 1px solid #1e180e; cursor: pointer; font-size: 14px; transition: background 0.1s; }
+  td.habit-name { text-align: left; padding: 8px 12px; background: #16120c; position: sticky; left: 0; z-index: 1; font-size: 12px; color: #d4b870; min-width: 180px; }
+  td.pct-cell { font-size: 11px; font-weight: bold; cursor: default; padding: 6px 8px; }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+  .add-row { display: flex; gap: 10px; margin-bottom: 24px; max-width: 420px; }
+  .add-row input { flex: 1; background: #16120c; border: 1px solid #2a2015; color: #e8d5b0; padding: 10px 14px; border-radius: 8px; font-size: 13px; font-family: Georgia, serif; outline: none; }
+  .add-row button { background: #f5c842; color: #0f0d0a; border: none; padding: 10px 20px; border-radius: 8px; font-size: 13px; font-weight: bold; cursor: pointer; font-family: Georgia, serif; }
+  .del-btn { background: none; border: none; color: #4a3520; cursor: pointer; font-size: 16px; margin-left: 6px; vertical-align: middle; }
+  .del-btn:hover { color: #f87171; }
+  .graph-box { background: #16120c; border: 1px solid #2a2015; border-radius: 12px; padding: 24px; }
+  .graph-header { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 16px; }
+  .graph-title { font-size: 10px; letter-spacing: 4px; color: #8b6914; text-transform: uppercase; margin-bottom: 4px; }
+  .graph-sub { font-size: 11px; color: #6b5a35; }
+  .avg-num { font-size: 22px; font-weight: bold; color: #f5c842; text-align: right; }
+  .avg-label { font-size: 10px; color: #6b5a35; letter-spacing: 2px; text-align: right; }
+  .legend { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 14px; }
+  .legend-item { display: flex; align-items: center; gap: 5px; font-size: 10px; color: #6b5a35; }
+  .today-col { background: #1f1a0d !important; color: #f5c842 !important; }
+  .tip { text-align: center; margin-top: 20px; font-size: 10px; color: #3a2d18; letter-spacing: 3px; }
+  input[type="text"].edit-input { background: #1e180e; border: 1px solid #f5c842; color: #f5c842; padding: 2px 6px; border-radius: 4px; font-size: 12px; font-family: Georgia, serif; width: 120px; }
+</style>
+</head>
+<body>
+
+<div class="subtitle">Monthly Habit Tracker</div>
+<div class="nav">
+  <button onclick="changeMonth(-1)">◀</button>
+  <span id="month-label"></span>
+  <button onclick="changeMonth(1)">▶</button>
+</div>
+
+<div id="tracker"></div>
+
+<div class="add-row">
+  <input type="text" id="new-habit" placeholder="+ Add new habit..." onkeydown="if(event.key==='Enter')addHabit()"/>
+  <button onclick="addHabit()">Add</button>
+</div>
+
+<div class="graph-box">
+  <div class="graph-header">
+    <div>
+      <div class="graph-title">Daily Score Graph</div>
+      <div class="graph-sub" id="graph-sub"></div>
+    </div>
+    <div>
+      <div class="avg-num" id="avg-num">0</div>
+      <div class="avg-label">AVG / DAY</div>
+    </div>
+  </div>
+  <canvas id="myChart" height="90"></canvas>
+  <div class="legend" id="legend"></div>
+</div>
+<div class="tip">DOUBLE-CLICK HABIT NAME TO EDIT · PRESS ENTER TO SAVE</div>
+
+<script>
+const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+const COLORS = ["#f59e0b","#34d399","#60a5fa","#f472b6","#a78bfa","#fb923c","#2dd4bf"];
+
+let today = new Date();
+let curMonth = today.getMonth();
+let curYear = today.getFullYear();
+let habits = ["Daily Sajda / Prayer 🕌","10K Steps 🚶","Book Reading 📚","Daily Meditation 🧘","6-8 hrs Sleep 😴","No Junk Food 🥗","Pushups / Gym 💪"];
+let checks = {};
+let chartInstance = null;
+
+function key(hIdx, day) { return `${curMonth}-${curYear}-${hIdx}-${day}`; }
+function isChecked(hIdx, day) { return !!checks[key(hIdx, day)]; }
+function toggle(hIdx, day) { checks[key(hIdx, day)] = !isChecked(hIdx, day); render(); }
+function getDays() { return new Date(curYear, curMonth + 1, 0).getDate(); }
+
+function changeMonth(dir) {
+  curMonth += dir;
+  if (curMonth < 0) { curMonth = 11; curYear--; }
+  if (curMonth > 11) { curMonth = 0; curYear++; }
+  render();
+}
+
+function addHabit() {
+  const inp = document.getElementById("new-habit");
+  if (inp.value.trim()) { habits.push(inp.value.trim()); inp.value = ""; render(); }
+}
+
+function removeHabit(idx) {
+  habits.splice(idx, 1);
+  render();
+}
+
+function startEdit(idx) {
+  const cell = document.getElementById(`habit-cell-${idx}`);
+  const name = habits[idx];
+  cell.innerHTML = `<span class="dot" style="background:${COLORS[idx%COLORS.length]}"></span>
+    <input class="edit-input" id="edit-inp-${idx}" value="${name}" onblur="saveEdit(${idx})" onkeydown="if(event.key==='Enter')saveEdit(${idx})" />
+    <button class="del-btn" onclick="removeHabit(${idx})">×</button>`;
+  document.getElementById(`edit-inp-${idx}`).focus();
+}
+
+function saveEdit(idx) {
+  const inp = document.getElementById(`edit-inp-${idx}`);
+  if (inp && inp.value.trim()) habits[idx] = inp.value.trim();
+  render();
+}
+
+function render() {
+  const days = getDays();
+  document.getElementById("month-label").textContent = `${MONTHS[curMonth]} ${curYear}`;
+
+  // Table
+  let html = `<div class="table-wrap"><table><thead><tr>
+    <th class="habit-col">HABITS / PROTOCOLS</th>`;
+  for (let d = 1; d <= days; d++) {
+    const isToday = d === today.getDate() && curMonth === today.getMonth() && curYear === today.getFullYear();
+    html += `<th${isToday?' class="today-col"':''}>${d}</th>`;
+  }
+  html += `<th class="pct-col">%</th></tr></thead><tbody>`;
+
+  habits.forEach((habit, hIdx) => {
+    const color = COLORS[hIdx % COLORS.length];
+    let done = 0;
+    for (let d = 1; d <= days; d++) if (isChecked(hIdx, d)) done++;
+    const pct = Math.round((done / days) * 100);
+    const pctColor = pct >= 80 ? "#34d399" : pct >= 50 ? "#f59e0b" : "#f87171";
+
+    html += `<tr><td class="habit-name" id="habit-cell-${hIdx}" ondblclick="startEdit(${hIdx})">
+      <span class="dot" style="background:${color}"></span>${habit}
+      <button class="del-btn" onclick="removeHabit(${hIdx})">×</button>
+    </td>`;
+    for (let d = 1; d <= days; d++) {
+      const checked = isChecked(hIdx, d);
+      html += `<td style="background:${checked?color+'22':'transparent'}" onclick="toggle(${hIdx},${d})">
+        ${checked ? `<span style="color:${color};font-weight:bold">✓</span>` : `<span style="color:#2a2015;font-size:11px">·</span>`}
+      </td>`;
+    }
+    html += `<td class="pct-cell" style="color:${pctColor}">${pct}%</td></tr>`;
+  });
+  html += `</tbody></table></div>`;
+  document.getElementById("tracker").innerHTML = html;
+
+  // Graph
+  const graphData = [];
+  for (let d = 1; d <= days; d++) {
+    let score = 0;
+    habits.forEach((_, hIdx) => { if (isChecked(hIdx, d)) score++; });
+    graphData.push(score);
+  }
+  const avg = graphData.reduce((a, b) => a + b, 0) / days;
+  document.getElementById("avg-num").textContent = Math.round(avg * 10) / 10;
+  document.getElementById("graph-sub").textContent = `Habits completed per day · ${habits.length} total`;
+
+  const labels = Array.from({length: days}, (_, i) => i + 1);
+  if (chartInstance) chartInstance.destroy();
+  const ctx = document.getElementById("myChart").getContext("2d");
+  chartInstance = new Chart(ctx, {
+    type: "line",
+    data: {
+      labels,
+      datasets: [{
+        data: graphData,
+        borderColor: "#f5c842",
+        backgroundColor: "rgba(245,200,66,0.08)",
+        borderWidth: 2,
+        pointBackgroundColor: "#f59e0b",
+        pointBorderColor: "#1c1410",
+        pointRadius: 3,
+        pointHoverRadius: 5,
+        tension: 0.3,
+        fill: true,
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: "#1c160e",
+          borderColor: "#2a2015",
+          borderWidth: 1,
+          titleColor: "#8b6914",
+          bodyColor: "#e8d5b0",
+          callbacks: {
+            title: (items) => `Day ${items[0].label}`,
+            label: (item) => `${item.raw} / ${habits.length} habits`
+          }
+        },
+        annotation: {}
+      },
+      scales: {
+        x: { ticks: { color: "#6b5a35", font: { size: 10 } }, grid: { color: "#1e180e" } },
+        y: { min: 0, max: habits.length, ticks: { color: "#6b5a35", font: { size: 10 }, stepSize: 1 }, grid: { color: "#1e180e" } }
+      }
+    }
+  });
+
+  // Legend
+  let leg = "";
+  habits.forEach((h, i) => {
+    leg += `<div class="legend-item"><div style="width:6px;height:6px;border-radius:50%;background:${COLORS[i%COLORS.length]}"></div>${h}</div>`;
+  });
+  document.getElementById("legend").innerHTML = leg;
+}
+
+render();
+</script>
+</body>
+</html>
